@@ -541,7 +541,7 @@ class MainActivity : Activity(), XmbHost {
         prefs.packOffered = true
         xmb.showDialog(
             "You can replace the built-in font, icons and sounds with your own.\n" +
-                "Select a folder with them now, or later in Settings › XMB Asset Folder.",
+                "Select a folder with them now, or later in Settings.",
             listOf("Select", "Later"),
             selected = 1,
         ) { b ->
