@@ -74,7 +74,7 @@ class AssetPack(private val ctx: Context) {
                 ext == "ttf" || ext == "otf" ->
                     // Prefer the XMB's own NewRodin when several fonts are present.
                     if (font == null || ("rodin" in base && "rodin" !in font!!.name.lowercase())) font = doc
-                ext == "png" && base in ICONS -> icons[base] = doc
+                ext == "png" && base in ICONS -> icons[ICON_SWAPS[base] ?: base] = doc
                 ext in AUDIO && base in SOUNDS -> sounds.putIfAbsent(base, doc)
                 ext == "txt" && base in TEXTS -> texts[base] = doc
             }
@@ -162,6 +162,12 @@ class AssetPack(private val ctx: Context) {
             "network_update", "psp", "remote_play", "rss", "sound", "system_settings", "theme",
             "theme_wallpaper", "umd",
         )
+
+        /**
+         * Imported icons that trade places: the Settings category shows the system-settings
+         * toolbox, and System Settings and Android Settings show the category's wrench.
+         */
+        private val ICON_SWAPS = mapOf("cat_settings" to "system_settings", "system_settings" to "cat_settings")
 
         /** Sound file names: cursor (also confirm and back), option menus, game boot, power-on and background music. */
         val SOUNDS = setOf("up", "down", "notice", "notice_back", "launch", "boot", "bgm")

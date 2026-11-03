@@ -50,6 +50,7 @@ The app has its own original look: icons from [Material Symbols](https://fonts.g
 | Sounds (`.ogg`, `.flac`, `.wav` or `.mp3`) | `up`, `down` (cursor; also confirm and back), `notice`, `notice_back` (option menus), `boot` (power-on), `launch` (game boot), `bgm` (optional background music) |
 | Text (`.txt`, optional) | `boot` — shown between the lines at power-on; `gameboot` — the caption under the game boot logo, which only appears when this file exists |
 
+Imported `cat_settings` and `system_settings` icons trade places: the Settings category shows the system-settings icon, and System Settings and Android Settings show the category icon.
 
 ## Building
 
