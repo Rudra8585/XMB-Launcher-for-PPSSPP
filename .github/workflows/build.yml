@@ -13,19 +13,19 @@ jobs:
     permissions:
       contents: write # to publish a Release for version tags
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: 17
 
-      - uses: android-actions/setup-android@v3
+      - uses: android-actions/setup-android@v4
 
       - name: Install NDK and CMake
         run: sdkmanager "ndk;27.2.12479018" "cmake;3.22.1"
 
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v6
 
       # The release key is stored as repository secrets. Pull requests from forks don't get secrets,
       # so their builds fall back to the debug key.
@@ -48,7 +48,7 @@ jobs:
           ./gradlew --no-daemon assembleRelease
           mv app/build/outputs/apk/release/app-release.apk "XMB-Launcher-$XMB_VERSION_NAME.apk"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: xmb-launcher-apk
           path: XMB-Launcher-*.apk
@@ -56,7 +56,7 @@ jobs:
       # Pushing a tag such as v1.0.0 publishes the APK as a GitHub Release.
       - name: Publish release
         if: startsWith(github.ref, 'refs/tags/v')
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: XMB-Launcher-*.apk
           generate_release_notes: true
