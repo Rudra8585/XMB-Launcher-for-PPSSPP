@@ -60,22 +60,36 @@ class GameLibrary(private val ctx: Context) {
         }
         state = State.SCANNING
         listener?.invoke()
-        io.execute {
-            val found = ArrayList<Game>()
-            val seen = HashSet<String>() // overlapping folders list a game once
-            for (tree in trees) {
-                try {
-                    val rootDoc = DocumentsContract.getTreeDocumentId(tree)
-                    walk(tree, rootDoc, 0) { uri, name, size, modified ->
-                        if (!seen.add("$name|$size|$modified")) return@walk
-                        load(uri, name, size, modified)?.let { found += it }
-                        // Show games as they appear on big folders.
-                        if (found.size % 8 == 0) post(gen, found.sortedBy { it.title.lowercase() }, State.SCANNING)
-                    }
-                } catch (e: Exception) {
-                    Log.w("GameLibrary", "Scan failed for $tree", e)
+        scanAttempt(gen, trees, 0)
+    }
+
+    /**
+     * Right after power-on, before Android's storage service is up, folders can't be read yet:
+     * a folder that fails, or a scan that finds nothing at all, is tried again for a while
+     * before "There are no games" is believed.
+     */
+    private fun scanAttempt(gen: Int, trees: List<Uri>, attempt: Int): Unit = io.execute {
+        val found = ArrayList<Game>()
+        val seen = HashSet<String>() // overlapping folders list a game once
+        var unreadable = false
+        for (tree in trees) {
+            try {
+                val rootDoc = DocumentsContract.getTreeDocumentId(tree)
+                walk(tree, rootDoc, 0) { uri, name, size, modified ->
+                    if (!seen.add("$name|$size|$modified")) return@walk
+                    load(uri, name, size, modified)?.let { found += it }
+                    // Show games as they appear on big folders.
+                    if (found.size % 8 == 0) post(gen, found.sortedBy { it.title.lowercase() }, State.SCANNING)
                 }
+            } catch (e: Exception) {
+                Log.w("GameLibrary", "Scan failed for $tree (attempt ${attempt + 1})", e)
+                unreadable = true
             }
+        }
+        val retry = (unreadable && attempt < MAX_RETRIES) || (found.isEmpty() && attempt < EMPTY_RETRIES)
+        if (retry) {
+            main.postDelayed({ if (gen == generation) scanAttempt(gen, trees, attempt + 1) }, RETRY_MS)
+        } else {
             post(gen, found.sortedBy { it.title.lowercase() }, State.READY)
         }
     }
@@ -94,7 +108,10 @@ class GameLibrary(private val ctx: Context) {
             DocumentsContract.Document.COLUMN_SIZE,
             DocumentsContract.Document.COLUMN_LAST_MODIFIED,
         )
-        ctx.contentResolver.query(children, cols, null, null, null)?.use { c ->
+        val cursor = ctx.contentResolver.query(children, cols, null, null, null)
+        // No cursor for the folder itself means storage isn't available (yet), not an empty folder.
+        if (cursor == null && depth == 0) throw IllegalStateException("Folder not readable: $tree")
+        cursor?.use { c ->
             while (c.moveToNext()) {
                 val id = c.getString(0)
                 val name = c.getString(1) ?: continue
@@ -133,11 +150,10 @@ class GameLibrary(private val ctx: Context) {
             } catch (e: Exception) {
                 Log.w("GameLibrary", "Could not read $name", e)
                 if (name.lowercase().endsWith(".pbp")) return null
-                dir.mkdirs()
-                meta.writeText("{}") // Still list it, by file name.
+                // Still list it, by file name, but don't cache that: the next scan tries again.
             }
         }
-        val json = try { JSONObject(meta.readText()) } catch (e: Exception) { JSONObject() }
+        val json = try { JSONObject(meta.readText()) } catch (e: Exception) { JSONObject() } // none if unread
         val fallback = if (name.equals("EBOOT.PBP", true)) "Homebrew" else name.substringBeforeLast('.')
         return Game(
             uri = uri,
@@ -152,6 +168,12 @@ class GameLibrary(private val ctx: Context) {
 
     private fun sha1(s: String): String =
         MessageDigest.getInstance("SHA-1").digest(s.toByteArray()).joinToString("") { "%02x".format(it) }.take(20)
+
+    companion object {
+        private const val RETRY_MS = 2000L
+        private const val MAX_RETRIES = 30 // a minute of an unreadable folder
+        private const val EMPTY_RETRIES = 3 // a few seconds of finding nothing at all
+    }
 }
 
 /**
@@ -177,17 +199,29 @@ class SaveLibrary(private val ctx: Context) {
         }
         state = GameLibrary.State.SCANNING
         listener?.invoke()
+        scanAttempt(gen, tree, 0)
+    }
+
+    /** As for games: retry while the folder can't be read yet after power-on. */
+    private fun scanAttempt(gen: Int, tree: Uri, attempt: Int) {
         io.execute {
             val found = ArrayList<Game>()
             try {
                 var dirId = DocumentsContract.getTreeDocumentId(tree)
+                // Throws when storage isn't available yet.
+                ctx.contentResolver.query(DocumentsContract.buildChildDocumentsUriUsingTree(tree, dirId), arrayOf(DocumentsContract.Document.COLUMN_DOCUMENT_ID), null, null, null)
+                    ?.close() ?: throw IllegalStateException("Folder not readable: $tree")
                 // The user may pick PSP or the memory stick root instead of SAVEDATA itself.
                 for (step in listOf("PSP", "SAVEDATA")) {
                     children(tree, dirId).firstOrNull { it.dir && it.name.equals(step, true) }?.let { dirId = it.id }
                 }
                 for (d in children(tree, dirId).filter { it.dir }) load(tree, d)?.let { found += it }
             } catch (e: Exception) {
-                Log.w("SaveLibrary", "Scan failed", e)
+                Log.w("SaveLibrary", "Scan failed (attempt ${attempt + 1})", e)
+                if (attempt < 30) {
+                    main.postDelayed({ if (gen == generation) scanAttempt(gen, tree, attempt + 1) }, 2000L)
+                    return@execute
+                }
             }
             // Newest first, like the PSP.
             val sorted = found.sortedByDescending { it.save!!.modified }
