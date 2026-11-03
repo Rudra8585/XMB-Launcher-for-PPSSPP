@@ -29,6 +29,10 @@ class Prefs(ctx: Context) {
     var otherHome: String?
         get() = sp.getString("otherHome", null)
         set(v) = sp.edit().putString("otherHome", v).apply()
+    /** The first-run note about importing your own assets has been shown. */
+    var packOffered: Boolean
+        get() = bool("packOffered", false)
+        set(v) = setBool("packOffered", v)
     var theme: String
         get() = sp.getString("theme", "original")!!
         set(v) = sp.edit().putString("theme", v).apply()
@@ -58,8 +62,8 @@ class Prefs(ctx: Context) {
         set(v) = setBool("clock24", v)
 }
 
-/** XMB sound effects, from the imported [AssetPack]; missing sounds are silent. */
-class Sfx(private val pack: AssetPack, private val prefs: Prefs) {
+/** XMB sound effects: imported ones from the [AssetPack], otherwise the built-in sounds. */
+class Sfx(private val ctx: Context, private val pack: AssetPack, private val prefs: Prefs) {
     // Confirm and back reuse the pack's "up" and "down" sounds, as on the PSP.
     enum class Id(val file: String) {
         UP("up"), DOWN("down"), OK("up"), CANCEL("down"), NOTICE("notice"), NOTICE_BACK("notice_back"),
@@ -84,8 +88,13 @@ class Sfx(private val pack: AssetPack, private val prefs: Prefs) {
         // Ids that share a file (confirm and cursor-up both use "up") share one loaded sample.
         val loaded = HashMap<String, Int>()
         for (id in Id.values()) {
-            val file = pack.sound(id.file) ?: continue
-            ids[id] = loaded.getOrPut(file.path) { pool.load(file.path, 1) }
+            val file = pack.sound(id.file)
+            if (file != null) {
+                ids[id] = loaded.getOrPut(file.path) { pool.load(file.path, 1) }
+            } else {
+                val res = pack.defaultSound(id.file) ?: continue
+                ids[id] = loaded.getOrPut("res:$res") { pool.load(ctx, res, 1) }
+            }
         }
     }
 

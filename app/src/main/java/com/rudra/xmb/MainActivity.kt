@@ -102,7 +102,7 @@ class MainActivity : Activity(), XmbHost {
         started = true
         prefs = Prefs(this)
         pack = AssetPack(this)
-        sfx = Sfx(pack, prefs)
+        sfx = Sfx(this, pack, prefs)
         font = pack.font()
         library = GameLibrary(this)
         saveLibrary = SaveLibrary(this)
@@ -532,16 +532,18 @@ class MainActivity : Activity(), XmbHost {
         }
     }
 
-    private var packAsked = false
-
-    /** The font, icons and sounds don't ship with the app; until they're imported, offer to (once per run). */
+    /**
+     * The app works with its built-in look. Once, on first run, it mentions that a folder with your
+     * own font, icons and sounds can replace it.
+     */
     private fun checkAssetPack() {
-        if (pack.installed || packAsked || xmb.hasDialog) return
-        packAsked = true
+        if (pack.installed || prefs.packOffered || xmb.hasDialog) return
+        prefs.packOffered = true
         xmb.showDialog(
-            "The XMB font, icons and sounds are not included with this app.\n" +
-                "Select the folder you copied them to. You can do this later in Settings.",
+            "You can replace the built-in font, icons and sounds with your own.\n" +
+                "Select a folder with them now, or later in Settings › XMB Asset Folder.",
             listOf("Select", "Later"),
+            selected = 1,
         ) { b ->
             xmb.closeDialog()
             if (b == 0) pickAssetFolder()

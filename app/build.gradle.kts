@@ -1,7 +1,18 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
 }
+
+// The release key comes from keystore.properties (local builds, git-ignored) or from environment
+// variables (CI, filled from repository secrets). Without either, release builds use the debug key.
+val keystoreProps = Properties().apply {
+    val f = rootProject.file("keystore.properties")
+    if (f.isFile) f.inputStream().use { load(it) }
+}
+fun signingValue(prop: String, env: String): String? = keystoreProps.getProperty(prop) ?: System.getenv(env)
+val releaseStore = signingValue("storeFile", "XMB_KEYSTORE")?.let { file(it) }?.takeIf { it.isFile }
 
 android {
     namespace = "com.rudra.xmb"
@@ -12,8 +23,9 @@ android {
         applicationId = "com.rudra.xmb"
         minSdk = 26
         targetSdk = 34
-        versionCode = 1
-        versionName = "1.0"
+        // CI sets these from the run number and the release tag.
+        versionCode = System.getenv("XMB_VERSION_CODE")?.toIntOrNull() ?: 1
+        versionName = System.getenv("XMB_VERSION_NAME") ?: "1.0-dev"
         ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64", "x86") }
         externalNativeBuild { cmake { arguments += "-DANDROID_STL=c++_static" } }
     }
@@ -25,11 +37,21 @@ android {
         }
     }
 
+    signingConfigs {
+        if (releaseStore != null) {
+            create("release") {
+                storeFile = releaseStore
+                storePassword = signingValue("storePassword", "XMB_KEYSTORE_PASSWORD")
+                keyAlias = signingValue("keyAlias", "XMB_KEY_ALIAS")
+                keyPassword = signingValue("keyPassword", "XMB_KEY_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
-            // Signed with the debug key so CI produces an installable APK without secrets.
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
         }
     }
 
