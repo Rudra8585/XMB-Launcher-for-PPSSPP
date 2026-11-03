@@ -1,0 +1,8 @@
+<resources>
+    <style name="Theme.Xmb" parent="android:Theme.Material.NoActionBar.Fullscreen">
+        <item name="android:windowBackground">@android:color/black</item>
+        <item name="android:windowFullscreen">true</item>
+        <item name="android:windowContentOverlay">@null</item>
+    </style>
+    <color name="ic_bg">#0C5BD0</color>
+</resources>
