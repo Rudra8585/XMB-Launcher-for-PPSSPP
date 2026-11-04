@@ -21,17 +21,18 @@ class AndroidApp(val pkg: String, val label: String, val icon: Bitmap)
 class AndroidApps(private val ctx: Context) {
     private val bubbles = HashMap<String, Bitmap>()
 
-    /** Every app with a launcher entry except this one, by name. Slow: run off the main thread. */
+    /** Every app on the device that can be opened (phone or TV launcher entry), by name. Slow: run off the main thread. */
     fun installed(): List<AndroidApp> {
         val pm = ctx.packageManager
-        val launcher = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
         @Suppress("DEPRECATION")
-        return pm.queryIntentActivities(launcher, 0)
-            .map { it.activityInfo }
-            .filter { it.packageName != ctx.packageName }
-            .distinctBy { it.packageName }
+        return pm.getInstalledApplications(0)
+            .filter { it.packageName != ctx.packageName && launchIntent(it.packageName) != null }
             .map { AndroidApp(it.packageName, it.loadLabel(pm).toString(), bubble(it.packageName, it.loadIcon(pm))) }
             .sortedBy { it.label.lowercase() }
+    }
+
+    private fun launchIntent(pkg: String): Intent? = ctx.packageManager.let {
+        it.getLaunchIntentForPackage(pkg) ?: it.getLeanbackLaunchIntentForPackage(pkg)
     }
 
     /** The apps in [packages] that are still installed, in that order. */
@@ -48,7 +49,7 @@ class AndroidApps(private val ctx: Context) {
     }
 
     fun launch(pkg: String): Boolean {
-        val intent = ctx.packageManager.getLaunchIntentForPackage(pkg) ?: return false
+        val intent = launchIntent(pkg) ?: return false
         return try {
             ctx.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)); true
         } catch (e: Exception) {

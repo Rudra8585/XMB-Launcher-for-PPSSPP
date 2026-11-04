@@ -924,7 +924,9 @@ class XmbView(context: Context, private val host: XmbHost, private val font: Typ
                 val plugged = it.getIntExtra(BatteryManager.EXTRA_PLUGGED, 0) != 0
                 val status = it.getIntExtra(BatteryManager.EXTRA_STATUS, BatteryManager.BATTERY_STATUS_UNKNOWN)
                 charging = plugged && status != BatteryManager.BATTERY_STATUS_FULL && batteryCache < 100
-                fastCharging = charging && isFastCharging(it)
+                // Once seen, the bolt stays until the charger comes out: the measured current dips
+                // and the rated power isn't in every broadcast, so a fresh reading can miss it.
+                fastCharging = charging && (fastCharging || isFastCharging(it))
             }
         }
         return batteryCache

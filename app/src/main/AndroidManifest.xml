@@ -20,6 +20,11 @@
         </intent>
     </queries>
 
+    <!-- Game › Android Apps lists every app on the device, not only the ones Android shows by default. -->
+    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
+    <!-- Keeps the screen black over PPSSPP while it loads a game (only once the user allows it). -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+
     <uses-feature android:glEsVersion="0x00020000" android:required="true" />
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
     <uses-feature android:name="android.hardware.gamepad" android:required="false" />
@@ -53,5 +58,13 @@
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </activity>
+        <!-- Restarts the app after the look changes; runs in its own process so it can end the main one. -->
+        <activity
+            android:name=".Restarter"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:process=":restart"
+            android:theme="@style/Theme.Xmb" />
     </application>
 </manifest>

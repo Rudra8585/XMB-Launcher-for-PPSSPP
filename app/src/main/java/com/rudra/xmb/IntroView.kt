@@ -39,6 +39,8 @@ class IntroView(
     private var done = false
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val bar = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
+    // Its own paint: a translucent colour left on [paint] would also fade the white wash under it.
+    private val veil = Paint()
     private val text = Paint(Paint.ANTI_ALIAS_FLAG).apply { textAlign = Paint.Align.CENTER }
     private val sceFont = Typeface.create("sans-serif", Typeface.NORMAL)
     private val logoFont = Typeface.create("sans-serif-light", Typeface.NORMAL)
@@ -149,10 +151,10 @@ class IntroView(
         if (logo > 0f && gameText != null) drawPspLogo(c, w, h, logo, gameText)
 
         // Fade out through grey to black.
-        val out = phase(t, 7.55f, 8.25f)
+        val out = phase(t, GAME_FADE_START, GAME_FADE_START + 0.7f)
         if (out > 0f) {
-            paint.color = argb(out, 0x000000)
-            c.drawRect(0f, 0f, w, h, paint)
+            veil.color = argb(out, 0x000000)
+            c.drawRect(0f, 0f, w, h, veil)
         }
     }
 
@@ -211,7 +213,9 @@ class IntroView(
         /** When the black veil is gone and the waves show; the menu reveal is timed from here. */
         const val BOOT_END = 3.4f
         private const val BOOT_CUE = 0.15f
-        const val GAME_END = 8.6f
+        // The logo holds, then fades to black; the game starts once the black has settled.
+        private const val GAME_FADE_START = 6.55f
+        const val GAME_END = 7.6f
         private const val GAME_CUE = 0.1f
     }
 }

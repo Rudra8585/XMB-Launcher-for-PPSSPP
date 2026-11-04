@@ -25,6 +25,21 @@ class Prefs(ctx: Context) {
     var saveFolder: Uri?
         get() = sp.getString("saveFolder", null)?.let(Uri::parse)
         set(v) = sp.edit().putString("saveFolder", v?.toString()).apply()
+    /** Milliseconds the screen stays black while PPSSPP loads a game; 0 = off. */
+    var curtainMs: Int
+        get() = sp.getInt("curtainMs", 3000)
+        set(v) = sp.edit().putInt("curtainMs", v).apply()
+    /**
+     * PPSSPP was left running with a game. While it runs it ignores any new game it is sent and goes
+     * back to the old one, and apps can't close it; so the next launch asks the user to close it first.
+     */
+    var ppssppOpen: Boolean
+        get() = bool("ppssppOpen", false)
+        set(v) = setBool("ppssppOpen", v)
+    /** Asked once, at the first game launch, for the permission the black screen needs. */
+    var curtainAsked: Boolean
+        get() = bool("curtainAsked", false)
+        set(v) = setBool("curtainAsked", v)
     /** "package/activity" of the home app Settings › Open Home App starts. */
     var otherHome: String?
         get() = sp.getString("otherHome", null)
@@ -32,7 +47,8 @@ class Prefs(ctx: Context) {
     /** Use the imported font, icons and sounds (true) or the built-in ones (false). */
     var useImported: Boolean
         get() = bool("useImported", true)
-        set(v) = setBool("useImported", v)
+        // Written at once: the app restarts right after this changes, before a background write lands.
+        set(v) { sp.edit().putBoolean("useImported", v).commit() }
     /** Packages of the Android apps listed under Game › Android Apps, in the order they were added. */
     var apps: List<String>
         get() = sp.getString("apps", "")!!.split('\n').filter { it.isNotEmpty() }
@@ -72,10 +88,9 @@ class Prefs(ctx: Context) {
 
 /** XMB sound effects: imported ones from the [AssetPack], otherwise the built-in sounds. */
 class Sfx(private val ctx: Context, private val pack: AssetPack, private val prefs: Prefs) {
-    // Imported sounds: confirm and back reuse the pack's "up" and "down", as on the PSP.
-    // The built-in set has its own confirm and back ([builtin]).
-    enum class Id(val file: String, val builtin: String = file) {
-        UP("up"), DOWN("down"), OK("up", "ok"), CANCEL("down", "cancel"), NOTICE("notice"), NOTICE_BACK("notice_back"),
+    // Confirm and back reuse the "up" and "down" sounds, as on the PSP.
+    enum class Id(val file: String) {
+        UP("up"), DOWN("down"), OK("up"), CANCEL("down"), NOTICE("notice"), NOTICE_BACK("notice_back"),
         LAUNCH("launch"), BOOT("boot"),
     }
 
@@ -101,7 +116,7 @@ class Sfx(private val ctx: Context, private val pack: AssetPack, private val pre
             if (file != null) {
                 ids[id] = loaded.getOrPut(file.path) { pool.load(file.path, 1) }
             } else {
-                val res = pack.defaultSound(id.builtin) ?: continue
+                val res = pack.defaultSound(id.file) ?: continue
                 ids[id] = loaded.getOrPut("res:$res") { pool.load(ctx, res, 1) }
             }
         }
@@ -222,11 +237,20 @@ object Ppsspp {
         }
     }
 
+    /** Force-stopped (from Settings or a game overlay) and not started since: certainly not running. */
+    fun isStopped(ctx: Context, pkg: String): Boolean = try {
+        ctx.packageManager.getApplicationInfo(pkg, 0).flags and android.content.pm.ApplicationInfo.FLAG_STOPPED != 0
+    } catch (e: Exception) {
+        false
+    }
+
     fun launch(ctx: Context, pkg: String, game: Uri): Boolean {
         val intent = Intent(Intent.ACTION_VIEW).apply {
             setDataAndType(game, "application/octet-stream")
             setClassName(pkg, ACTIVITY)
-            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+            // No window animation: the game boot ends in black and PPSSPP starts in black.
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK or
+                Intent.FLAG_ACTIVITY_NO_ANIMATION)
         }
         return try {
             ctx.startActivity(intent); true

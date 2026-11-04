@@ -73,8 +73,18 @@ class MainActivity : Activity(), XmbHost {
     private var launchedAsHome = false
 
     private fun noteHomeLaunch(intent: Intent?) {
-        if (intent?.hasCategory(Intent.CATEGORY_HOME) == true) launchedAsHome = true
+        if (intent?.hasCategory(Intent.CATEGORY_HOME) == true) {
+            launchedAsHome = true
+            homeSinceLaunch = true
+        }
     }
+
+    /**
+     * The Home button was pressed since the game started: PPSSPP was only sent to the background and
+     * is still running. Without it, coming back here means PPSSPP closed itself (Exit, or Back from its
+     * menu), as Android then simply returns to the home screen.
+     */
+    private var homeSinceLaunch = false
 
     private var newBoot = false
 
@@ -96,6 +106,7 @@ class MainActivity : Activity(), XmbHost {
     private fun start(savedInstanceState: Bundle?) {
         started = true
         prefs = Prefs(this)
+        if (newBoot) prefs.ppssppOpen = false // nothing survives a restart of the device
         pack = AssetPack(this, prefs.useImported)
         sfx = Sfx(this, pack, prefs)
         font = pack.font()
@@ -132,7 +143,8 @@ class MainActivity : Activity(), XmbHost {
         setContentView(root)
         goFullscreen() // needs the decor view, so only after setContentView
 
-        xmb.setCategories(buildMenu(), start = 4)
+        val reopened = intent.getBooleanExtra(Restarter.EXTRA_REOPENED, false)
+        xmb.setCategories(buildMenu(), start = if (reopened) 0 else 4)
         library.listener = { xmb.refresh(); refreshFreeSpace() }
         library.scan(prefs.gameFolders)
         saveLibrary.listener = { xmb.refresh() }
@@ -149,7 +161,7 @@ class MainActivity : Activity(), XmbHost {
             intro?.frozenAt = at
             xmb.setChrome(0f, 0f, instant = true)
             if (mode == IntroView.Mode.BOOT) waves.freezeBoot(at)
-        } else if (prefs.bootAnim && (newBoot || (savedInstanceState == null && !launchedAsHome && !isHomeApp()))) {
+        } else if (prefs.bootAnim && !reopened && (newBoot || (savedInstanceState == null && !launchedAsHome && !isHomeApp()))) {
             playBoot()
         } else {
             checkEmulator()
@@ -183,10 +195,25 @@ class MainActivity : Activity(), XmbHost {
         resumedNow = true
         goFullscreen()
         if (!started) return
+        if (launching && SystemClock.uptimeMillis() - launchedAt < LAUNCH_SETTLE_MS) {
+            // PPSSPP often hands back here for a moment while it restarts itself for the new game.
+            // Stay black; only if it stays that way (PPSSPP failed or was closed) is this a real return.
+            handler.postDelayed(endLaunch, BACK_FROM_LAUNCH_MS)
+            return
+        }
+        endLaunch.run()
+    }
+
+    private var launchedAt = 0L
+
+    /** Back from PPSSPP (or the launch didn't happen): lift the black and bring the menu back. */
+    private val endLaunch = Runnable {
         waves.onResume()
         sfx.resumeBgm()
+        curtain.hide()
         if (launching) {
             launching = false
+            if (!homeSinceLaunch) prefs.ppssppOpen = false
             removeIntro()
             xmb.setChrome(1f, 1f)
         }
@@ -202,9 +229,17 @@ class MainActivity : Activity(), XmbHost {
         super.onPause()
         resumedNow = false
         if (!started) return
+        handler.removeCallbacks(endLaunch)
         waves.onPause()
         sfx.pauseBgm()
         stopPreview()
+    }
+
+    override fun onStop() {
+        super.onStop()
+        // PPSSPP is on screen: its loading screen stays covered for the chosen time from now. If it
+        // restarts itself this happens again, and the time counts from the last one.
+        if (started && launching) curtain.release(prefs.curtainMs.toLong())
     }
 
     override fun onDestroy() {
@@ -363,6 +398,16 @@ class MainActivity : Activity(), XmbHost {
                     title = "System Settings", icon = icon("system_settings"), sub = level(
                         toggle("Power-On Animation", icon("psp"), { prefs.bootAnim }, { prefs.bootAnim = it }),
                         toggle("Game Boot Animation", icon("umd"), { prefs.launchAnim }, { prefs.launchAnim = it }),
+                        XItem(
+                            title = "Hide PPSSPP Loading", icon = icon("umd"),
+                            value = { curtainLabel(prefs.curtainMs) },
+                            choices = { CURTAIN_CHOICES.map { it.toString() to curtainLabel(it) } },
+                            current = { prefs.curtainMs.toString() },
+                            onChoose = {
+                                prefs.curtainMs = it.toInt()
+                                if (prefs.curtainMs > 0 && !curtain.allowed) askCurtainPermission {}
+                            },
+                        ),
                         toggle("Animated Game Icons", icon("remote_play"), { prefs.iconVideo }, {
                             prefs.iconVideo = it
                             if (!it) stopVideo()
@@ -473,9 +518,7 @@ class MainActivity : Activity(), XmbHost {
         val game = XCategory("Game", gameIcon, listOf(savedDataItem, memstickItem, appsItem)).apply { sel = 1; anim = 1f }
         val network = XCategory(
             "Network", icon("cat_network"), listOf(
-                XItem("Internet Browser", icon("browser"), action = {
-                    openUrl("https://www.google.com/")
-                }),
+                XItem("Internet Browser", icon("browser"), action = { openBrowser() }),
                 XItem("PPSSPP Website", icon("rss"), action = { openUrl("https://www.ppsspp.org/") }),
             )
         )
@@ -507,6 +550,8 @@ class MainActivity : Activity(), XmbHost {
         }
     }
 
+    private fun curtainLabel(ms: Int) = if (ms <= 0) "Off" else if (ms == 1000) "1 Second" else "${ms / 1000} Seconds"
+
     private fun emulatorLabel(key: String) = when (key) {
         "free" -> "PPSSPP"
         "gold" -> "PPSSPP Gold"
@@ -516,6 +561,18 @@ class MainActivity : Activity(), XmbHost {
     private fun appVersion(): String = try {
         @Suppress("DEPRECATION") packageManager.getPackageInfo(packageName, 0).versionName ?: "1.0"
     } catch (e: Exception) { "1.0" }
+
+    /** The default browser as the user left it (its own tabs), not a new page. */
+    private fun openBrowser() {
+        val pm = packageManager
+        @Suppress("DEPRECATION")
+        val pkg = pm.resolveActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://")), android.content.pm.PackageManager.MATCH_DEFAULT_ONLY)
+            ?.activityInfo?.packageName?.takeIf { it != "android" } // "android" is the chooser: no default set
+            ?: pm.queryIntentActivities(Intent(Intent.ACTION_VIEW, Uri.parse("https://")), 0).firstOrNull()?.activityInfo?.packageName
+        val open = pkg?.let { pm.getLaunchIntentForPackage(it) }
+        if (open == null) { openUrl("https://www.google.com/"); return }
+        try { startActivity(open) } catch (e: Exception) { openUrl("https://www.google.com/") }
+    }
 
     private fun openUrl(url: String) = try {
         startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
@@ -624,6 +681,21 @@ class MainActivity : Activity(), XmbHost {
         }
     }
 
+    /**
+     * Restarts the whole app, as closing and opening it does, to load the new font, icons and sounds.
+     * Rebuilding them in the running app left the colours washed out on the RP5 until a restart.
+     * It opens again on Settings, without the power-on animation.
+     */
+    private fun restartApp() {
+        stopPreview()
+        sfx.release()
+        startActivity(Intent(this, Restarter::class.java)
+            .putExtra(Restarter.EXTRA_PID, android.os.Process.myPid())
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_NO_ANIMATION))
+        finish()
+        @Suppress("DEPRECATION") overridePendingTransition(0, 0)
+    }
+
     /** Switches between the imported (XMB) assets and the built-in originals, then reloads the screen. */
     private fun setLook(imported: Boolean) {
         if (imported && !pack.installed) {
@@ -635,7 +707,7 @@ class MainActivity : Activity(), XmbHost {
         }
         if (prefs.useImported == imported) return
         prefs.useImported = imported
-        recreate() // font, icons and sounds are loaded at start
+        restartApp()
     }
 
     private fun pickAssetFolder() {
@@ -659,7 +731,7 @@ class MainActivity : Activity(), XmbHost {
                         "No XMB files were found in that folder.\nSee the README for the file names.", listOf("OK"),
                     ) { xmb.closeDialog() }
                     // Font, icons and sounds are loaded at start: rebuild the screen with them.
-                    else -> { prefs.useImported = true; recreate() }
+                    else -> { prefs.useImported = true; restartApp() }
                 }
             }
         }
@@ -776,23 +848,69 @@ class MainActivity : Activity(), XmbHost {
         }
         val pkg = Ppsspp.pick(this, prefs.emulator)
         if (pkg == null) { checkEmulator(); return }
+        if (prefs.ppssppOpen && Ppsspp.isStopped(this, pkg)) prefs.ppssppOpen = false // closed with Force stop
+        if (prefs.ppssppOpen) {
+            // Every time, until PPSSPP is closed: with Force stop or a swipe in Recents (both leave it
+            // marked stopped), by its own Exit, or by restarting the device.
+            xmb.showDialog("PPSSPP is still running.\nClose it first, then start the game again.", listOf("OK")) {
+                xmb.closeDialog()
+            }
+            return
+        }
+        if (prefs.curtainMs > 0 && !curtain.allowed && !prefs.curtainAsked) {
+            prefs.curtainAsked = true
+            askCurtainPermission { onLaunch(game) }
+            return
+        }
+        // From here on no preview may start, even one still loading; a playing one fades out quickly
+        // and the game boot sound waits for it.
+        handler.removeCallbacksAndMessages(hoverToken)
+        launching = true
+        val musicPlaying = snd0.playing
         stopPreview()
         val go = {
-            launching = true
+            // Black over everything until PPSSPP has the game running, hiding the app switch and its loading screen.
+            launchedAt = SystemClock.uptimeMillis()
+            homeSinceLaunch = false
+            prefs.ppssppOpen = true
+            if (prefs.curtainMs > 0) curtain.show()
             if (!Ppsspp.launch(this, pkg, game.uri)) {
                 launching = false
+                curtain.hide()
                 removeIntro()
                 xmb.setChrome(1f, 1f)
                 xmb.showDialog("Could not start PPSSPP.", listOf("OK")) { xmb.closeDialog() }
             }
         }
-        if (prefs.launchAnim) {
-            // The menu and clock drop away first, leaving only the waves for the game boot to wash over.
-            xmb.setChrome(0f, 0f, speed = 25f)
-            showIntro(IntroView.Mode.GAME, onCue = { sfx.play(Sfx.Id.LAUNCH, force = true) }) { go() }
-        } else {
-            sfx.play(Sfx.Id.LAUNCH)
-            go()
+        val begin = {
+            if (prefs.launchAnim) {
+                // The menu and clock drop away first, leaving only the waves for the game boot to wash over.
+                xmb.setChrome(0f, 0f, speed = 25f)
+                showIntro(IntroView.Mode.GAME, onCue = { sfx.play(Sfx.Id.LAUNCH, force = true) }) { go() }
+            } else {
+                sfx.play(Sfx.Id.LAUNCH)
+                go()
+            }
+        }
+        if (musicPlaying) handler.postDelayed(begin, Snd0Player.FADE_OUT_MS + 60) else begin()
+    }
+
+    private val curtain by lazy { LaunchCurtain(applicationContext) }
+
+    /** Asks to draw over other apps, which the black screen while PPSSPP loads needs; then [after]. */
+    private fun askCurtainPermission(after: () -> Unit) {
+        xmb.showDialog(
+            "To keep the screen black while PPSSPP loads the game, allow XMB Launcher to display over other apps.\nOpen that setting now?",
+            listOf("Yes", "No"),
+        ) { b ->
+            xmb.closeDialog()
+            if (b == 0) {
+                try {
+                    startActivity(Intent(android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName")))
+                } catch (e: Exception) {
+                    after()
+                }
+            } else after()
         }
     }
 
@@ -1026,5 +1144,13 @@ class MainActivity : Activity(), XmbHost {
         // Measured from a real PSP: after the boot veil lifts, the clock appears, then the menu.
         private const val CLOCK_AFTER_BOOT_MS = 2750L
         private const val MENU_AFTER_BOOT_MS = 3450L
+
+        /** Resuming this soon after starting a game may be PPSSPP handing over, not the user coming back. */
+        private const val LAUNCH_SETTLE_MS = 15_000L
+        /** ...unless this stays the screen in front for this long. */
+        private const val BACK_FROM_LAUNCH_MS = 1_500L
+
+        /** How long the screen stays black once PPSSPP shows; 0 turns it off. */
+        private val CURTAIN_CHOICES = listOf(0, 1000, 2000, 3000, 4000, 5000, 6000)
     }
 }

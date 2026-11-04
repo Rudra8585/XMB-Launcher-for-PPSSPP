@@ -7,6 +7,10 @@ import android.util.Log
 
 /** Loops a game's SND0.AT3 with the PSP-style fade in / fade out. */
 class Snd0Player {
+    companion object {
+        const val FADE_OUT_MS = 160L
+    }
+
     private class Session {
         @Volatile var stopRequested = false
     }
@@ -25,6 +29,9 @@ class Snd0Player {
         session?.stopRequested = true
         session = null
     }
+
+    /** A preview is playing (or about to). */
+    val playing: Boolean get() = session != null
 
     private fun run(riff: ByteArray, s: Session) {
         val dec = AtracDecoder.open(riff) ?: run {
@@ -56,14 +63,12 @@ class Snd0Player {
                 track.setVolume(volume)
                 track.write(pcm, 0, n * dec.channels)
             }
-            // Short fade out so switching games does not click.
-            var v = volume
-            while (v > 0f) {
-                v -= 0.2f
-                track.setVolume(maxOf(0f, v))
-                val (pcm, n) = dec.next()
-                if (n <= 0) break
-                track.write(pcm, 0, n * dec.channels)
+            // Quick fade out, timed rather than per decoded block so it is always over in FADE_OUT_MS:
+            // short enough not to overlap what comes next, long enough not to click.
+            val steps = 8
+            for (i in steps - 1 downTo 0) {
+                track.setVolume(volume * i / steps)
+                Thread.sleep(FADE_OUT_MS / steps)
             }
             track.pause()
             track.flush()

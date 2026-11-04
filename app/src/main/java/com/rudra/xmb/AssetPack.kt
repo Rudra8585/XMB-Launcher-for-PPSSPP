@@ -196,7 +196,6 @@ class AssetPack(private val ctx: Context, private val enabled: Boolean = true) {
         private val DEFAULT_SOUNDS = mapOf(
             "up" to R.raw.xmb_up, "down" to R.raw.xmb_down, "notice" to R.raw.xmb_notice,
             "notice_back" to R.raw.xmb_notice_back, "boot" to R.raw.xmb_boot, "launch" to R.raw.xmb_launch,
-            "ok" to R.raw.xmb_ok, "cancel" to R.raw.xmb_cancel,
         )
     }
 }

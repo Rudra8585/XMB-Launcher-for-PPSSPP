@@ -89,29 +89,25 @@ def write(name, x, peak):
         w.writeframes(data.tobytes())
 
 
-def tick(pitch):
-    """Cursor: a tiny, rounded tap - a soft click with a short wooden-glass body."""
-    s = 0.07
-    click = bandpass(rng.standard_normal(int(s * RATE)), pitch * 1.4, pitch * 3.2) * env(s, 0.0005, 0.004)
-    body = np.sin(2 * np.pi * pitch * t_axis(s)) * env(s, 0.001, 0.012)
-    return reverb(lowpass(click * 0.6 + body, 7000), 0.2, 0.05)
-
-
-def two_note(f1, f2, gap, decay, wet):
-    """Two soft, rounded bell notes: harmonic FM, gently low-passed, each allowed to ring out."""
-    a = fm_bell(f1, 0.7, decay, ratio=2.0, index=0.6)
-    b = fm_bell(f2, 0.7, decay * 1.3, ratio=2.0, index=0.6)
-    return reverb(lowpass(place([(a, 0), (b, gap)], 0.8), 4500), 0.6, wet)
+def bead(pitch, bright):
+    """Cursor, confirm and back: a small metal bead dropped on a hard surface - a sharp, high "tik"
+    that is over almost at once, then a much fainter bounce just after. No ringing tail."""
+    def hit(gain):
+        s = 0.05
+        t = t_axis(s)
+        modes = ((1.0, 1.0, 0.009), (1.47, 0.6 * bright, 0.006), (2.09, 0.35 * bright, 0.004))
+        ring = sum(a * np.sin(2 * np.pi * pitch * r * t + rng.uniform(0, 6.28)) * env(s, 0.0001, d) for r, a, d in modes)
+        click = bandpass(rng.standard_normal(len(t)), pitch * 0.8, min(pitch * 2.6, 20000)) * env(s, 0.00005, 0.0012)
+        return (ring * 0.7 + click) * gain
+    x = place([(hit(1.0), 0.0), (hit(0.18), 0.028)], 0.09)
+    return reverb(highpass(x, 1500), 0.08, 0.05, predelay=0.003)
 
 
 os.makedirs(OUT, exist_ok=True)
 
-# Cursor up and down: the same tap, down a little lower.
-write('up', tick(1320), 0.45)
-write('down', tick(1110), 0.45)
-# Confirm: two quick bell notes rising a fifth. Back: falling a fourth, softer and lower.
-write('ok', two_note(1046.5, 1568.0, 0.055, 0.09, 0.22), 0.6)
-write('cancel', two_note(880.0, 659.25, 0.06, 0.08, 0.2), 0.5)
+# Cursor up / confirm, and cursor down / back: the same bead drop, the second a little lower and softer.
+write('up', bead(6200, 1.0), 0.45)
+write('down', bead(5200, 0.8), 0.42)
 # Option menu opens / closes: one airy pluck with a breath of noise, up or down.
 def airy(f, sweep):
     s = 0.35

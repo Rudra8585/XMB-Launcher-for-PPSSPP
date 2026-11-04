@@ -22,8 +22,11 @@ Updates install over the previous version and keep your settings. [Obtainium](ht
   - the `ICON1.PMF` movie plays inside the icon.
 - **Animations**: the power-on sequence plays at launch, and the game boot animation plays before handing off to PPSSPP.
 - **PPSSPP handoff**: the selected game opens in PPSSPP (free or Gold). If PPSSPP is missing, a blocking prompt links to the Play Store.
-- **Game › Android Apps**: the Android apps you pick (under **Choose Apps** in that list), shown as round, glossy bubbles and launched from the XMB.
-- **Battery**: while charging, the battery bars fill up in a loop; with a fast charger (15 W or more, where the device reports it) a small lightning bolt appears beside it.
+  - The game boot fades to black, and the screen stays black while PPSSPP loads, so the app switch and PPSSPP's loading screen never show. This needs **Display over other apps** (asked for at the first launch); the time is set in **Settings › System Settings › Hide PPSSPP Loading**.
+  - A running PPSSPP ignores new games and returns to the one it has open, and Android doesn't let other apps close it. So if PPSSPP was left open (you pressed Home in a game), starting a game asks you to close it first: swipe it away in Recents, force stop it, or use its own Exit.
+- **Game › Android Apps**: the Android apps you pick from every app on the device (under **Choose Apps** in that list), shown as round, glossy bubbles and launched from the XMB.
+- **Network › Internet Browser**: opens your default browser as you left it, with your own tabs.
+- **Battery**: while charging, the battery bars fill up in a loop; with a fast charger (15 W or more, where the device reports it) a small lightning bolt appears beside it and stays until the charger is unplugged.
 - **Game › Saved Data Utility**: lists PPSSPP save data (`PSP/SAVEDATA`, not save states) with each save's icon, backdrop, music and movie; Information and Delete from the options menu.
 - **Settings › Game Folder Settings**: the folders scanned for games (subfolders included). Add as many as you like; select one to remove it.
 
@@ -44,7 +47,7 @@ The app can replace the Android home screen. On the device, go to **Settings ›
 
 ## Asset folder
 
-The app has its own original look: icons from [Material Symbols](https://fonts.google.com/icons), the [M PLUS 1p](https://fonts.google.com/specimen/M+PLUS+1p) font and synthesized sounds. To use a different font, icons or sounds, put your own files in a folder and import it from **Settings › XMB Asset Folder**. They're copied into the app, so the folder can be deleted afterwards, and anything you don't provide keeps the built-in version. **Settings › Theme Settings › Icons, Font and Sounds** switches between the imported set (*XMB Assets*) and the built-in one (*Original*) at any time. Subfolders are searched, and files are matched by name:
+The app has its own original look: icons from [Material Symbols](https://fonts.google.com/icons), the [M PLUS 1p](https://fonts.google.com/specimen/M+PLUS+1p) font and synthesized sounds. To use a different font, icons or sounds, put your own files in a folder and import it from **Settings › XMB Asset Folder**. They're copied into the app, so the folder can be deleted afterwards, and anything you don't provide keeps the built-in version. **Settings › Theme Settings › Icons, Font and Sounds** switches between the imported set (*XMB Assets*) and the built-in one (*Original*) at any time; the app restarts to load them. Subfolders are searched, and files are matched by name:
 
 | What | File names |
 | --- | --- |
