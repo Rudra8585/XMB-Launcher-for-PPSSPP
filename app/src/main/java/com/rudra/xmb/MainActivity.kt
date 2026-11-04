@@ -407,13 +407,17 @@ class MainActivity : Activity(), XmbHost {
                 ),
                 XItem(
                     title = "Open Home App", icon = icon("home"),
-                    subtitle = { "Also opens with Select. △ changes the app." },
+                    subtitle = { "Also opens with R3. △ changes the app." },
                     value = { homeApps().firstOrNull { it.first == prefs.otherHome }?.second ?: "Not set" },
                     choices = { homeApps() }, current = { prefs.otherHome ?: "" },
                     onChoose = { prefs.otherHome = it; openOtherHome() },
                     action = { openOtherHome() },
                 ),
-                XItem(title = "Android Settings", icon = icon("system_settings"), action = { openAndroidSettings() }),
+                XItem(
+                    title = "Android Settings", icon = icon("system_settings"),
+                    subtitle = { "Also opens with Select." },
+                    action = { openAndroidSettings() },
+                ),
             )
         )
         val photo = XCategory(
@@ -854,8 +858,11 @@ class MainActivity : Activity(), XmbHost {
 
     override fun sfx(id: Sfx.Id) = sfx.play(id)
 
-    /** The Select button: the home app chosen under Settings › Open Home App. */
-    override fun onSelectButton() = openOtherHome()
+    /** Select: Android Settings. */
+    override fun onSelectButton() = openAndroidSettings()
+
+    /** R3 (right stick press): the home app chosen under Settings › Open Home App. */
+    override fun onR3Button() = openOtherHome()
 
     private fun openAndroidSettings() {
         try {

@@ -39,7 +39,8 @@ The app can replace the Android home screen. On the device, go to **Settings ›
 | A (✕) | Select |
 | B (○) | Back |
 | Y (△) | Options menu |
-| Select | Open the home app chosen in **Settings › Open Home App** |
+| Select | Open Android Settings |
+| R3 (press right stick) | Open the home app chosen in **Settings › Open Home App** |
 
 ## Asset folder
 

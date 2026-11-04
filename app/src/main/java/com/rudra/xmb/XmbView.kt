@@ -69,6 +69,7 @@ interface XmbHost {
     fun onExit()
 
     fun onSelectButton()
+    fun onR3Button()
 }
 
 /**
@@ -356,6 +357,7 @@ class XmbView(context: Context, private val host: XmbHost, private val font: Typ
             }
             KeyEvent.KEYCODE_BUTTON_B, KeyEvent.KEYCODE_BACK, KeyEvent.KEYCODE_ESCAPE -> back()
             KeyEvent.KEYCODE_BUTTON_SELECT -> if (d == null && p == null) { host.sfx(Sfx.Id.OK); host.onSelectButton() }
+            KeyEvent.KEYCODE_BUTTON_THUMBR -> if (d == null && p == null) { host.sfx(Sfx.Id.OK); host.onR3Button() }
             KeyEvent.KEYCODE_BUTTON_Y, KeyEvent.KEYCODE_MENU, KeyEvent.KEYCODE_BUTTON_X -> {
                 if (p != null) back() else options()
             }
