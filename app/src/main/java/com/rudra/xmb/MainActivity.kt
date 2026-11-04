@@ -195,6 +195,8 @@ class MainActivity : Activity(), XmbHost {
         resumedNow = true
         goFullscreen()
         if (!started) return
+        BootCover.dismiss()
+        BootCover.setWanted(this, isHomeApp())
         if (launching && SystemClock.uptimeMillis() - launchedAt < LAUNCH_SETTLE_MS) {
             // PPSSPP often hands back here for a moment while it restarts itself for the new game.
             // Stay black; only if it stays that way (PPSSPP failed or was closed) is this a real return.

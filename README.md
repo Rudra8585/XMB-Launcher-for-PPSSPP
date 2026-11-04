@@ -7,7 +7,8 @@ An Android launcher that recreates the PSP's XrossMediaBar and starts games in P
 1. Install [PPSSPP](https://www.ppsspp.org/download/) (free or Gold).
 2. Download the APK from the [latest release](../../releases/latest) and install it.
 3. Open **XMB Launcher**, go to **Settings › Game Folder Settings › Add Folder** and pick the folder with your `.iso` / `.cso` games.
-4. Optional: make it your home screen (see below), and import your own look (see **Asset folder**).
+4. Choose how to run it: as the device's home screen, like a console (**Console setup** below), or as an ordinary app you open when you want it (**Simple app** below).
+5. Optional: import your own look (see **Asset folder**).
 
 Updates install over the previous version and keep your settings. [Obtainium](https://github.com/ImranR98/Obtainium) can track this repo's releases for you.
 
@@ -30,9 +31,30 @@ Updates install over the previous version and keep your settings. [Obtainium](ht
 - **Game › Saved Data Utility**: lists PPSSPP save data (`PSP/SAVEDATA`, not save states) with each save's icon, backdrop, music and movie; Information and Delete from the options menu.
 - **Settings › Game Folder Settings**: the folders scanned for games (subfolders included). Add as many as you like; select one to remove it.
 
-## Using it as the home screen
+## Console setup (home screen)
 
-The app can replace the Android home screen. On the device, go to **Settings › Apps › Default apps › Home app** and pick **XMB Launcher** (or press Home and choose it with **Always**). As the home app, the power-on sequence plays once per device boot, and back on the top menu no longer offers to exit.
+This is how the app is meant to run on a handheld: it replaces the Android home screen, so the device boots straight into the XMB and the Home button always comes back to it.
+
+1. **Make it the home app.** Go to **Settings › Apps › Default apps › Home app** and pick **XMB Launcher** (or press Home and choose it with **Always**).
+2. **Allow Display over other apps.** The first time you start a game, the app asks for it and opens the setting: turn it on for XMB Launcher. (It is also under **Settings › Apps › XMB Launcher › Display over other apps**.) This keeps the screen black while PPSSPP loads a game, so neither the switch between apps nor PPSSPP's loading screen shows.
+3. **Turn on the boot screen.** Go to **Settings › Accessibility**, open **XMB Launcher boot screen** (it may be under *Downloaded apps*) and turn it on. At power-on Android shows its own placeholder screen, with the status bar, for about half a second before any home app may start; this keeps the screen black over it until the menu is up. Android warns that accessibility services can read the screen: this one asks for no screen content and no events, and only draws a black screen at power-on.
+
+What you get:
+
+- The power-on sequence plays once each time the device is switched on, not when you come back from a game or an app.
+- Back on the top menu doesn't offer to exit.
+- **R3** (or **Settings › Open Home App**) opens another home screen you choose, such as the device's own, when you need it.
+
+To go back to your old home screen, pick it again in **Settings › Apps › Default apps › Home app**. The boot screen does nothing while XMB Launcher isn't the home app.
+
+## Simple app
+
+You can also skip all of the above and use it like any other app: open **XMB Launcher** from the app drawer, play, and press Home to go back to your usual home screen.
+
+- Nothing needs setting up besides your game folder. The black screen while PPSSPP loads still needs **Display over other apps**; if you'd rather not give it, choose *No* when asked and set **Settings › System Settings › Hide PPSSPP Loading** to *Off*.
+- The power-on sequence plays each time the app starts fresh (turn it off in **Settings › System Settings › Power-On Animation**).
+- Back on the top menu offers to exit.
+- The boot screen service isn't needed.
 
 ## Controls
 

@@ -1,3 +1,5 @@
 <resources>
     <string name="app_name">XMB Launcher</string>
+    <string name="boot_cover_label">XMB Launcher boot screen</string>
+    <string name="boot_cover_description">Keeps the screen black when the device powers on, hiding the status bar until the XMB menu appears. It reads nothing on the screen and does nothing else.</string>
 </resources>

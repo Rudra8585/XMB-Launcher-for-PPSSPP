@@ -58,6 +58,21 @@
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </activity>
+        <!-- Black screen over the status bar at power-on (see BootCover). Runs before the unlock; it is
+             not a home screen, so it doesn't affect Android's choice of home app. -->
+        <service
+            android:name=".BootCover"
+            android:directBootAware="true"
+            android:exported="true"
+            android:label="@string/boot_cover_label"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/boot_cover" />
+        </service>
         <!-- Restarts the app after the look changes; runs in its own process so it can end the main one. -->
         <activity
             android:name=".Restarter"
