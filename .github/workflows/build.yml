@@ -41,9 +41,11 @@ jobs:
           XMB_KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           XMB_KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           XMB_KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-          XMB_VERSION_CODE: ${{ github.run_number }}
           XMB_VERSION_NAME: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || format('dev-{0}', github.run_number) }}
         run: |
+          # Version codes start at 100, above the ones used by local test builds, so a release can
+          # always be installed over one.
+          export XMB_VERSION_CODE=$((GITHUB_RUN_NUMBER + 100))
           chmod +x gradlew
           ./gradlew --no-daemon assembleRelease
           mv app/build/outputs/apk/release/app-release.apk "XMB-Launcher-$XMB_VERSION_NAME.apk"
