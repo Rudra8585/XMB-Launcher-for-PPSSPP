@@ -43,6 +43,8 @@ class XItem(
     /** A colour square shown beside the value, and beside each choice. */
     val swatch: (() -> Int)? = null,
     val choiceSwatch: ((String) -> Int)? = null,
+    /** Draw the icon as it is (app bubbles), without the XMB's metallic shading. */
+    val plainIcon: Boolean = false,
 )
 
 class XLevel(
@@ -78,7 +80,8 @@ class XmbView(context: Context, private val host: XmbHost, private val font: Typ
     private var cat = 0
     private var catAnim = 0f
 
-    private class Sub(val parent: XItem, val level: XLevel) {
+    /** An open level; [back] is the level it was opened from, if it was opened from one. */
+    private class Sub(val parent: XItem, val level: XLevel, val back: Sub? = null) {
         var sel = 0
         var anim = 0f
     }
@@ -202,7 +205,7 @@ class XmbView(context: Context, private val host: XmbHost, private val font: Typ
 
     /** Opens [level] under [parent], for items whose action decides whether to enter it. */
     fun openLevel(parent: XItem, level: XLevel) {
-        sub = Sub(parent, level)
+        sub = Sub(parent, level, sub)
         subShown = sub
         updateFocus()
         invalidate()
@@ -254,7 +257,7 @@ class XmbView(context: Context, private val host: XmbHost, private val font: Typ
             item.game != null -> host.onLaunch(item.game)
             item.sub != null -> {
                 host.sfx(Sfx.Id.OK)
-                sub = Sub(item, item.sub)
+                sub = Sub(item, item.sub, sub)
                 subShown = sub
             }
             item.action != null -> { host.sfx(Sfx.Id.OK); item.action.invoke() } // its choices are under △
@@ -278,7 +281,11 @@ class XmbView(context: Context, private val host: XmbHost, private val font: Typ
         when {
             dialog != null -> { dialog!!.let { d -> d.onButton(d.buttons.size - 1) } }
             popup != null -> { popup = null; host.sfx(Sfx.Id.NOTICE_BACK) }
-            sub != null -> { sub = null; host.sfx(Sfx.Id.CANCEL) }
+            sub != null -> {
+                sub = sub!!.back
+                sub?.let { subShown = it } // back to the level this one was opened from
+                host.sfx(Sfx.Id.CANCEL)
+            }
             else -> host.onExit()
         }
         updateFocus()
@@ -533,6 +540,7 @@ class XmbView(context: Context, private val host: XmbHost, private val font: Typ
         when {
             isAnimating() -> postInvalidateOnAnimation()
             glowing -> postInvalidateDelayed(GLOW_FRAME_MS) // the breathing halo is smooth at 30 fps
+            charging && clockAlpha > 0f -> postInvalidateDelayed(CHARGE_FRAME_MS) // the filling battery
             else -> postInvalidateDelayed(1000) // the clock
         }
     }
@@ -645,7 +653,7 @@ class XmbView(context: Context, private val host: XmbHost, private val font: Typ
         val size = lerp(29f, 34f, f)
         item.icon?.let {
             if (f > 0.5f) drawIconGlow(c, it, x, y, size, alpha * (f - 0.5f) * 2f)
-            drawIcon(c, it, x, y, size, alpha * lerp(0.8f, 1f, f))
+            drawIcon(c, it, x, y, size, alpha * lerp(0.8f, 1f, f), item.plainIcon)
         }
         val ta = alpha * lerp(0.82f, 1f, f)
         if (ta <= 0.01f) return
@@ -715,9 +723,9 @@ class XmbView(context: Context, private val host: XmbHost, private val font: Typ
         }
     }
 
-    private fun drawIcon(c: Canvas, src: Bitmap, cx: Float, cy: Float, size: Float, alpha: Float) {
+    private fun drawIcon(c: Canvas, src: Bitmap, cx: Float, cy: Float, size: Float, alpha: Float, plain: Boolean = false) {
         if (alpha <= 0f) return
-        val b = metallic(src)
+        val b = if (plain) src else metallic(src)
         val scale = size / max(b.width, b.height)
         val w = b.width * scale
         val h = b.height * scale
@@ -857,10 +865,11 @@ class XmbView(context: Context, private val host: XmbHost, private val font: Typ
         text.textSize = 12f
         text.textAlign = Paint.Align.RIGHT
         textAlpha(255)
-        val right = vw - 40f
-        c.drawText(str, right, 22f, text)
-        // Battery, PSP style: outlined cell with up to three bars.
         val level = batteryLevel()
+        val right = vw - 40f
+        // Fast charging puts a small lightning bolt between the clock and the battery.
+        c.drawText(str, if (fastCharging) right - 10f else right, 22f, text)
+        // Battery, PSP style: outlined cell with up to three bars.
         val bx = right + 8f
         fill.style = Paint.Style.STROKE
         fill.strokeWidth = 1.4f
@@ -869,25 +878,71 @@ class XmbView(context: Context, private val host: XmbHost, private val font: Typ
         c.drawRoundRect(RectF(bx, 13f, bx + 22f, 24f), 1.5f, 1.5f, fill)
         fill.style = Paint.Style.FILL
         c.drawRect(bx + 22f, 16f, bx + 24f, 21f, fill)
-        val bars = when { level > 66 -> 3; level > 33 -> 2; level > 10 -> 1; else -> 0 }
+        val bars = when {
+            // Charging: the bars fill up one by one and start over, as on the PSP.
+            charging -> ((System.nanoTime() / CHARGE_STEP_NS) % 4).toInt()
+            level > 66 -> 3
+            level > 33 -> 2
+            level > 10 -> 1
+            else -> 0
+        }
         for (i in 0 until bars) c.drawRect(bx + 2.5f + i * 6.5f, 15.5f, bx + 7.5f + i * 6.5f, 21.5f, fill)
+        if (fastCharging) drawBolt(c, bx - 6f, 18.5f)
         fill.clearShadowLayer()
+    }
+
+    private val bolt = android.graphics.Path()
+
+    /** A small lightning bolt centred on ([cx], [cy]). */
+    private fun drawBolt(c: Canvas, cx: Float, cy: Float) {
+        bolt.reset()
+        bolt.moveTo(cx + 1.2f, cy - 6f)
+        bolt.lineTo(cx - 3f, cy + 0.8f)
+        bolt.lineTo(cx - 0.2f, cy + 0.8f)
+        bolt.lineTo(cx - 1.2f, cy + 6f)
+        bolt.lineTo(cx + 3f, cy - 0.8f)
+        bolt.lineTo(cx + 0.2f, cy - 0.8f)
+        bolt.close()
+        c.drawPath(bolt, fill)
     }
 
     private var batteryCache = 100
     private var batteryReadAt = 0L
+    private var charging = false // plugged in and not yet full
+    private var fastCharging = false
 
     private fun batteryLevel(): Int {
         val t = System.currentTimeMillis()
-        if (t - batteryReadAt > 30_000) {
+        if (t - batteryReadAt > BATTERY_POLL_MS) {
             batteryReadAt = t
             context.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))?.let {
                 val l = it.getIntExtra(BatteryManager.EXTRA_LEVEL, -1)
                 val sc = it.getIntExtra(BatteryManager.EXTRA_SCALE, 100)
                 if (l >= 0) batteryCache = l * 100 / max(1, sc)
+                val plugged = it.getIntExtra(BatteryManager.EXTRA_PLUGGED, 0) != 0
+                val status = it.getIntExtra(BatteryManager.EXTRA_STATUS, BatteryManager.BATTERY_STATUS_UNKNOWN)
+                charging = plugged && status != BatteryManager.BATTERY_STATUS_FULL && batteryCache < 100
+                fastCharging = charging && isFastCharging(it)
             }
         }
         return batteryCache
+    }
+
+    /**
+     * Fast charging, judged from the charger's rated power where the device reports it (most do, in
+     * the battery broadcast), otherwise from the current actually flowing into the battery.
+     */
+    private fun isFastCharging(battery: Intent): Boolean {
+        val maxMicroAmps = battery.getIntExtra("max_charging_current", 0).toLong()
+        val maxMicroVolts = battery.getIntExtra("max_charging_voltage", 0).toLong()
+        if (maxMicroAmps > 0 && maxMicroVolts > 0) {
+            val watts = maxMicroAmps * maxMicroVolts / 1e12
+            return watts >= FAST_CHARGE_WATTS
+        }
+        val manager = context.getSystemService(BatteryManager::class.java) ?: return false
+        var now = abs(manager.getIntProperty(BatteryManager.BATTERY_PROPERTY_CURRENT_NOW).toLong())
+        if (now in 1 until 20_000) now *= 1000 // some devices report mA instead of µA
+        return now >= FAST_CHARGE_MICROAMPS
     }
 
     private fun drawPopup(c: Canvas) {
@@ -1024,6 +1079,11 @@ class XmbView(context: Context, private val host: XmbHost, private val font: Typ
         const val TITLE_DELAY = 1f // seconds on a game before its title fades in
         const val GLOW_PERIOD_NS = 1_300_000_000L
         const val GLOW_FRAME_MS = 33L
+        const val CHARGE_STEP_NS = 600_000_000L // one more bar every 0.6 s while charging
+        const val CHARGE_FRAME_MS = 150L
+        const val BATTERY_POLL_MS = 5_000L
+        const val FAST_CHARGE_WATTS = 15.0
+        const val FAST_CHARGE_MICROAMPS = 1_500_000L
         const val GLOW_PAD = 21f // three blur radii: room for the halo to fade out
         private val RECT_GLOW = Any()
     }

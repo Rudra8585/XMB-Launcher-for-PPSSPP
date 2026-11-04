@@ -32,6 +32,7 @@ class MainActivity : Activity(), XmbHost {
     private lateinit var sfx: Sfx
     private lateinit var library: GameLibrary
     private lateinit var saveLibrary: SaveLibrary
+    private lateinit var androidApps: AndroidApps
     private lateinit var root: FrameLayout
     private lateinit var waves: WaveView
     private lateinit var xmb: XmbView
@@ -59,24 +60,20 @@ class MainActivity : Activity(), XmbHost {
         // Show straight away at power-on instead of after the (empty) lock screen.
         if (Build.VERSION.SDK_INT >= 27) setShowWhenLocked(true)
         else @Suppress("DEPRECATION") window.addFlags(WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED)
-        // At power-on Android runs this (direct boot aware) home screen before the user is unlocked,
-        // instead of its placeholder home with the wallpaper and status bar. Settings and the game
-        // cache aren't readable until the unlock, which follows a moment later, so stay black till then.
-        val users = getSystemService(android.os.UserManager::class.java)
-        if (users != null && !users.isUserUnlocked) {
-            setContentView(View(this).apply { setBackgroundColor(android.graphics.Color.BLACK) })
-            goFullscreen()
-            unlockReceiver = object : android.content.BroadcastReceiver() {
-                override fun onReceive(c: android.content.Context, i: Intent) {
-                    unregisterReceiver(this); unlockReceiver = null
-                    start(restored)
-                    if (isResumed()) onResume()
-                }
-            }
-            registerReceiver(unlockReceiver, android.content.IntentFilter(Intent.ACTION_USER_UNLOCKED))
-            return
-        }
+        noteHomeLaunch(intent)
         start(restored)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        noteHomeLaunch(intent)
+    }
+
+    /** Started by the Home button or at boot: this is the home screen, whatever the package query says. */
+    private var launchedAsHome = false
+
+    private fun noteHomeLaunch(intent: Intent?) {
+        if (intent?.hasCategory(Intent.CATEGORY_HOME) == true) launchedAsHome = true
     }
 
     private var newBoot = false
@@ -95,17 +92,16 @@ class MainActivity : Activity(), XmbHost {
 
     private var started = false
     private var resumedNow = false
-    private var unlockReceiver: android.content.BroadcastReceiver? = null
-    private fun isResumed() = resumedNow
 
     private fun start(savedInstanceState: Bundle?) {
         started = true
         prefs = Prefs(this)
-        pack = AssetPack(this)
+        pack = AssetPack(this, prefs.useImported)
         sfx = Sfx(this, pack, prefs)
         font = pack.font()
         library = GameLibrary(this)
         saveLibrary = SaveLibrary(this)
+        androidApps = AndroidApps(this)
 
         root = FrameLayout(this)
         waves = WaveView(this).apply {
@@ -153,7 +149,7 @@ class MainActivity : Activity(), XmbHost {
             intro?.frozenAt = at
             xmb.setChrome(0f, 0f, instant = true)
             if (mode == IntroView.Mode.BOOT) waves.freezeBoot(at)
-        } else if (prefs.bootAnim && (newBoot || (savedInstanceState == null && !isHomeApp()))) {
+        } else if (prefs.bootAnim && (newBoot || (savedInstanceState == null && !launchedAsHome && !isHomeApp()))) {
             playBoot()
         } else {
             checkEmulator()
@@ -213,7 +209,6 @@ class MainActivity : Activity(), XmbHost {
 
     override fun onDestroy() {
         super.onDestroy()
-        unlockReceiver?.let { unregisterReceiver(it) }
         if (!started) return
         stopPreview()
         sfx.release()
@@ -309,7 +304,7 @@ class MainActivity : Activity(), XmbHost {
             gameList = true,
         )
         lateinit var memstickItem: XItem
-        memstickItem = XItem(title = "Memory Stick™", icon = memstick, subtitle = { freeSpace }, action = {
+        memstickItem = XItem(title = "PSP Games", icon = icon("psp"), subtitle = { freeSpace }, action = {
             if (prefs.gameFolders.isEmpty()) {
                 xmb.showDialog("No game folder is set.\nSelect the folder that contains your ISO / CSO files?", listOf("Yes", "No")) { b ->
                     xmb.closeDialog()
@@ -345,6 +340,13 @@ class MainActivity : Activity(), XmbHost {
                         toggle("Wave Animation", icon("theme_wallpaper"), { waveAnimated }, {
                             waveAnimated = it; waves.setAnimated(it)
                         }),
+                        XItem(
+                            title = "Icons, Font and Sounds", icon = icon("theme_wallpaper"),
+                            value = { if (prefs.useImported && pack.installed) "XMB Assets" else "Original" },
+                            choices = { listOf("imported" to "XMB Assets", "builtin" to "Original") },
+                            current = { if (prefs.useImported && pack.installed) "imported" else "builtin" },
+                            onChoose = { setLook(it == "imported") },
+                        ),
                     )
                 ),
                 XItem(
@@ -458,8 +460,13 @@ class MainActivity : Activity(), XmbHost {
                 xmb.openLevel(savedDataItem, saveList)
             }
         })
-        // Saved Data Utility sits above Memory Stick, which stays selected.
-        val game = XCategory("Game", gameIcon, listOf(savedDataItem, memstickItem)).apply { sel = 1; anim = 1f }
+        lateinit var appsItem: XItem
+        appsItem = XItem(title = "Android Apps", icon = icon("android_apps"), subtitle = {
+            val n = prefs.apps.size
+            if (n == 0) "Choose apps to show here" else if (n == 1) "1 app" else "$n apps"
+        }, action = { openApps(appsItem) })
+        // Saved Data Utility sits above PSP Games, which stays selected; Android Apps below.
+        val game = XCategory("Game", gameIcon, listOf(savedDataItem, memstickItem, appsItem)).apply { sel = 1; anim = 1f }
         val network = XCategory(
             "Network", icon("cat_network"), listOf(
                 XItem("Internet Browser", icon("browser"), action = {
@@ -550,6 +557,83 @@ class MainActivity : Activity(), XmbHost {
         }
     }
 
+    // ------------------------------------------------------------ Android apps
+
+    private var shownApps: List<XItem> = emptyList()
+
+    /** Game › Android Apps: the chosen apps as bubbles, then Choose Apps. */
+    private fun openApps(parent: XItem) {
+        val chosen = prefs.apps
+        loader.execute {
+            val apps = androidApps.of(chosen)
+            runOnUiThread {
+                shownApps = apps.map { app ->
+                    XItem(title = app.label, icon = app.icon, plainIcon = true, action = { launchApp(app) })
+                }
+                val choose = XItem(title = "Choose Apps", icon = icon("android_apps"), action = { openChooser() })
+                xmb.openLevel(parent, XLevel(items = { shownApps + choose }, emptyText = { "" }))
+            }
+        }
+    }
+
+    private fun launchApp(app: AndroidApp) {
+        stopPreview()
+        if (!androidApps.launch(app.pkg)) {
+            xmb.showDialog("${app.label} could not be opened.", listOf("OK")) { xmb.closeDialog() }
+        }
+    }
+
+    /** Every installed app; selecting one adds it to Android Apps or takes it off again. */
+    private fun openChooser() {
+        xmb.showDialog("Please wait...", emptyList()) {}
+        loader.execute {
+            val all = androidApps.installed()
+            runOnUiThread {
+                xmb.closeDialog()
+                val items = all.map { app ->
+                    XItem(
+                        title = app.label, icon = app.icon, plainIcon = true,
+                        value = { if (app.pkg in prefs.apps) "Shown" else "" },
+                        action = {
+                            val list = prefs.apps
+                            prefs.apps = if (app.pkg in list) list - app.pkg else list + app.pkg
+                            refreshShownApps()
+                        },
+                    )
+                }
+                xmb.openLevel(XItem(title = "Choose Apps"), XLevel(items = { items }, emptyText = { "No apps found." }))
+            }
+        }
+    }
+
+    /** Keeps the Android Apps list in step with the chooser. */
+    private fun refreshShownApps() {
+        val chosen = prefs.apps
+        loader.execute {
+            val apps = androidApps.of(chosen)
+            runOnUiThread {
+                shownApps = apps.map { app ->
+                    XItem(title = app.label, icon = app.icon, plainIcon = true, action = { launchApp(app) })
+                }
+                xmb.invalidate()
+            }
+        }
+    }
+
+    /** Switches between the imported (XMB) assets and the built-in originals, then reloads the screen. */
+    private fun setLook(imported: Boolean) {
+        if (imported && !pack.installed) {
+            xmb.showDialog("No XMB assets are imported yet.\nSelect the folder that contains them?", listOf("Yes", "No")) { b ->
+                xmb.closeDialog()
+                if (b == 0) { prefs.useImported = true; pickAssetFolder() }
+            }
+            return
+        }
+        if (prefs.useImported == imported) return
+        prefs.useImported = imported
+        recreate() // font, icons and sounds are loaded at start
+    }
+
     private fun pickAssetFolder() {
         val intent = Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         try {
@@ -571,7 +655,7 @@ class MainActivity : Activity(), XmbHost {
                         "No XMB files were found in that folder.\nSee the README for the file names.", listOf("OK"),
                     ) { xmb.closeDialog() }
                     // Font, icons and sounds are loaded at start: rebuild the screen with them.
-                    else -> recreate()
+                    else -> { prefs.useImported = true; recreate() }
                 }
             }
         }
@@ -783,7 +867,7 @@ class MainActivity : Activity(), XmbHost {
 
     override fun onExit() {
         if (installDialogShown) return
-        if (isHomeApp()) return // the home screen has nothing to exit to
+        if (launchedAsHome || isHomeApp()) return // the home screen has nothing to exit to
         xmb.showDialog("Do you want to exit?", listOf("Yes", "No"), selected = 1) { b ->
             xmb.closeDialog()
             if (b == 0) finish()

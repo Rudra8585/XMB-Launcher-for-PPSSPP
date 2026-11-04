@@ -29,6 +29,14 @@ class Prefs(ctx: Context) {
     var otherHome: String?
         get() = sp.getString("otherHome", null)
         set(v) = sp.edit().putString("otherHome", v).apply()
+    /** Use the imported font, icons and sounds (true) or the built-in ones (false). */
+    var useImported: Boolean
+        get() = bool("useImported", true)
+        set(v) = setBool("useImported", v)
+    /** Packages of the Android apps listed under Game › Android Apps, in the order they were added. */
+    var apps: List<String>
+        get() = sp.getString("apps", "")!!.split('\n').filter { it.isNotEmpty() }
+        set(v) = sp.edit().putString("apps", v.joinToString("\n")).apply()
     /** The first-run note about importing your own assets has been shown. */
     var packOffered: Boolean
         get() = bool("packOffered", false)
@@ -64,9 +72,10 @@ class Prefs(ctx: Context) {
 
 /** XMB sound effects: imported ones from the [AssetPack], otherwise the built-in sounds. */
 class Sfx(private val ctx: Context, private val pack: AssetPack, private val prefs: Prefs) {
-    // Confirm and back reuse the pack's "up" and "down" sounds, as on the PSP.
-    enum class Id(val file: String) {
-        UP("up"), DOWN("down"), OK("up"), CANCEL("down"), NOTICE("notice"), NOTICE_BACK("notice_back"),
+    // Imported sounds: confirm and back reuse the pack's "up" and "down", as on the PSP.
+    // The built-in set has its own confirm and back ([builtin]).
+    enum class Id(val file: String, val builtin: String = file) {
+        UP("up"), DOWN("down"), OK("up", "ok"), CANCEL("down", "cancel"), NOTICE("notice"), NOTICE_BACK("notice_back"),
         LAUNCH("launch"), BOOT("boot"),
     }
 
@@ -92,7 +101,7 @@ class Sfx(private val ctx: Context, private val pack: AssetPack, private val pre
             if (file != null) {
                 ids[id] = loaded.getOrPut(file.path) { pool.load(file.path, 1) }
             } else {
-                val res = pack.defaultSound(id.file) ?: continue
+                val res = pack.defaultSound(id.builtin) ?: continue
                 ids[id] = loaded.getOrPut("res:$res") { pool.load(ctx, res, 1) }
             }
         }

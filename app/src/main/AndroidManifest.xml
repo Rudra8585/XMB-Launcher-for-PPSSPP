@@ -37,10 +37,10 @@
             android:launchMode="singleTask"
             android:resizeableActivity="false"
             android:screenOrientation="sensorLandscape"
-            android:directBootAware="true"
             android:showWhenLocked="true">
             <!-- showWhenLocked here, not only in code, so even the black starting window covers the
-                 lock screen at power-on. -->
+                 lock screen at power-on. Not directBootAware: at power-on Android would then see a
+                 different set of home apps before the unlock and drop the user's default home choice. -->
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />

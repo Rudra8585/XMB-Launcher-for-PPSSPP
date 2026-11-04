@@ -18,26 +18,29 @@ import java.io.File
  * Symbols icons, the M PLUS 1p font and synthesized sounds); a user can import their own copies from
  * a folder once, which are copied into private storage and take precedence piece by piece.
  */
-class AssetPack(private val ctx: Context) {
+class AssetPack(private val ctx: Context, private val enabled: Boolean = true) {
     private val dir = File(ctx.filesDir, "pack")
 
     val installed: Boolean get() = File(dir, MARKER).isFile
 
-    fun font(): Typeface = File(dir, FONT).takeIf { it.isFile }?.let {
+    /** An imported file, unless the imported look is switched off (it stays stored either way). */
+    private fun imported(path: String): File? = if (enabled) File(dir, path).takeIf { it.isFile } else null
+
+    fun font(): Typeface = imported(FONT)?.let {
         try { Typeface.createFromFile(it) } catch (e: Exception) { null }
     } ?: try { ctx.resources.getFont(R.font.xmb_default) } catch (e: Exception) { Typeface.DEFAULT }
 
     fun icon(name: String): Bitmap =
-        File(dir, "icons/$name.png").takeIf { it.isFile }?.let { BitmapFactory.decodeFile(it.path) } ?: defaultIcon(name)
+        imported("icons/$name.png")?.let { BitmapFactory.decodeFile(it.path) } ?: defaultIcon(name)
 
     /** The imported sound file, if any; otherwise see [defaultSound]. */
-    fun sound(name: String): File? = AUDIO.map { File(dir, "sfx/$name.$it") }.firstOrNull { it.isFile }
+    fun sound(name: String): File? = AUDIO.firstNotNullOfOrNull { imported("sfx/$name.$it") }
 
     /** The built-in sound's raw resource, for names that have one (all but background music). */
     fun defaultSound(name: String): Int? = DEFAULT_SOUNDS[name]
 
     /** Optional text: "boot" is shown between the lines at power-on, "gameboot" under the game boot logo. */
-    fun text(name: String): String? = File(dir, "$name.txt").takeIf { it.isFile }?.readText()?.trim()?.ifEmpty { null }
+    fun text(name: String): String? = imported("$name.txt")?.readText()?.trim()?.ifEmpty { null }
 
     /** "Font, 23 icons, 9 sounds", or "Built-in" when nothing is imported. */
     fun summary(): String {
@@ -160,7 +163,7 @@ class AssetPack(private val ctx: Context) {
             "browser", "cat_game", "cat_music", "cat_network", "cat_photo", "cat_settings", "cat_video",
             "date_time", "folder_music", "folder_photo", "game_sharing", "home", "memstick", "memstick_fill",
             "network_update", "psp", "remote_play", "rss", "sound", "system_settings", "theme",
-            "theme_wallpaper", "umd",
+            "theme_wallpaper", "umd", "android_apps",
         )
 
         /**
@@ -183,6 +186,7 @@ class AssetPack(private val ctx: Context) {
             "game_sharing" to R.drawable.xmb_game_sharing, "home" to R.drawable.xmb_home,
             "memstick" to R.drawable.xmb_memstick, "memstick_fill" to R.drawable.xmb_memstick_fill,
             "network_update" to R.drawable.xmb_network_update, "psp" to R.drawable.xmb_psp,
+            "android_apps" to R.drawable.xmb_android_apps,
             "remote_play" to R.drawable.xmb_remote_play, "rss" to R.drawable.xmb_rss,
             "sound" to R.drawable.xmb_sound, "system_settings" to R.drawable.xmb_system_settings,
             "theme" to R.drawable.xmb_theme, "theme_wallpaper" to R.drawable.xmb_theme_wallpaper,
@@ -192,6 +196,7 @@ class AssetPack(private val ctx: Context) {
         private val DEFAULT_SOUNDS = mapOf(
             "up" to R.raw.xmb_up, "down" to R.raw.xmb_down, "notice" to R.raw.xmb_notice,
             "notice_back" to R.raw.xmb_notice_back, "boot" to R.raw.xmb_boot, "launch" to R.raw.xmb_launch,
+            "ok" to R.raw.xmb_ok, "cancel" to R.raw.xmb_cancel,
         )
     }
 }
